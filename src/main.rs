@@ -20,10 +20,10 @@ fn validate_game(game: &Vec<(u16, u16)>) -> Result<(), ()> {
     return Ok(());
 }
 
-fn validate_frame(frame: &(u16, u16)) -> Result<u16, (())> {
+fn validate_frame(frame: &(u16, u16)) -> Result<u16, ((u16))> {
     let pins = frame.0 + frame.1;
     if pins > 10 {
-        return Err(());
+        return Err(pins);
     } else {
         return Ok(pins);
     }
@@ -34,7 +34,7 @@ fn is_strike(frame: &(u16, u16)) -> bool {
 }
 
 fn is_spare(frame: &(u16, u16)) -> bool {
-    return frame.0 + frame.1 == 10;
+    return (frame.0 + frame.1 == 10) && (frame.0 != 10);
 }
 
 fn score_game(game: &Vec<(u16, u16)>) -> u16 {
@@ -49,32 +49,40 @@ fn score_game(game: &Vec<(u16, u16)>) -> u16 {
     // Calculate open frames (naive score)
     for (i, frame) in game.iter().enumerate() {
         result[i] = match validate_frame(&frame) {
-            Ok(frame_score) => frame_score,
-            Err(()) => {
-                return 0;
+            Ok(frame_score) => {
+                println!("Frame[{}]\tScore[{}]", i, frame_score);
+                frame_score
+            }
+            Err(frame_score) => {
+                if i >= 9 {
+                    frame_score
+                } else {
+                    println!("Invalid frame detected!!");
+                    return 0;
+                }
             }
         };
     }
-    // Correct for spares
+    // Correct for spares and strikes
     for (i, frame) in game.iter().enumerate() {
         if is_spare(&frame) {
             let bonus = game.get(i + 1).unwrap();
+            println!("Frame Bonus(spare)[{}] + {}", i, bonus.0);
             result[i] += bonus.0;
         }
+
         if is_strike(&frame) {
             let bonus = game.get(i + 1).unwrap();
+            println!("Frame Bonus(strike)[{}] + {}", i, bonus.0 + bonus.1);
             result[i] += bonus.0 + bonus.1;
         }
     }
 
-    // // Correct for strikes
-    // for (i, frame) in game.iter().enumerate() {
-    //
-    // }
-    //
     // tally up final score
-    for frame_score in result {
+    println!("\nFinal Score:");
+    for (i, frame_score) in result.iter().enumerate() {
         score += frame_score;
+        println!("[{}]  {}", i, score);
     }
     return score;
 }
@@ -181,7 +189,7 @@ mod test {
             (0, 0),
             (0, 0),
         ];
-        assert_eq!(score_game(&game), 30)
+        assert_eq!(score_game(&game), 25)
     }
 
     #[test]
@@ -213,14 +221,14 @@ mod test {
             (10, 0),
             (10, 0),
             (10, 0),
-            (10, 0),
+            (10, 10),
             (10, 0),
         ];
         assert_eq!(score_game(&game), 300)
     }
 
     #[test]
-    fn example_game() {
+    fn example_game1() {
         let game = vec![
             (10, 0),
             (7, 3),
@@ -235,5 +243,23 @@ mod test {
             (3, 0),
         ];
         assert_eq!(score_game(&game), 168)
+    }
+
+    #[test]
+    fn example_game2() {
+        let game = vec![
+            (10, 0),
+            (7, 3),
+            (9, 0),
+            (10, 0),
+            (0, 8),
+            (8, 2),
+            (0, 6),
+            (10, 0),
+            (10, 0),
+            (10, 8),
+            (1, 0),
+        ];
+        assert_eq!(score_game(&game), 167)
     }
 }
