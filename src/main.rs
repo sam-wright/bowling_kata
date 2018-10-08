@@ -14,20 +14,32 @@ quick_error! {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Frame {
     roll1: u8,
     roll2: Option<u8>,
+    fill_ball: Option<u8>,
 }
 
-fn validate_game(game: &Vec<(Frame)>) -> Result<(), BowlingError> {
+impl Default for Frame {
+    fn default() -> Frame {
+        Frame {
+            roll1: 0,
+            roll2: Some(0),
+            fill_ball: None,
+        }
+    }
+}
+
+fn validate_game(num_frames: usize, game: &Vec<(Frame)>) -> Result<(), BowlingError> {
     let game_len = game.len();
 
-    if game_len < 10 {
+    if game_len < num_frames {
         println!("Game incomplete!, expected 10 frames, found {}", game_len);
         return Err(BowlingError::IncompleteGame);
     }
 
-    if game_len > 11 {
+    if game_len > num_frames {
         println!(
             "Game over-complete!, expected 10 frames, found {}",
             game_len
@@ -68,42 +80,44 @@ fn is_spare(frame: &Frame) -> bool {
     };
 }
 
-fn score_game(game: &Vec<Frame>) -> Result<u16, BowlingError> {
+fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError> {
     let mut result = vec![0; 11];
     let mut score = 0;
 
-    validate_game(&game)?;
-    // match validate_game(&game) {
-    //     Ok(()) => println!("seems legit"),
-    //     Err(()) => return 0,
-    // }
+    validate_game(num_frames, &game)?;
 
     // Calculate open frames (naive score)
     println!("Calculating Naive Score:");
     for (i, frame) in game.iter().enumerate() {
-        if i >= 10 {
-            break;
-        }
         result[i] = validate_frame(&frame)?;
         println!("Frame[{}]\tScore[{}]", i + 1, result[i]);
     }
+
     // Correct for spares and strikes
     println!("\nApplying Bonuses:");
     for (i, frame) in game.iter().enumerate() {
-        if i >= 10 {
-            break;
-        }
         if is_spare(&frame) {
-            let bonus = match game.get(i + 1) {
-                Some(bonus_frame) => bonus_frame,
-                None => panic!("Illegal frame requested!"),
-            };
-            println!("Frame Bonus(spare)[{}] + {}", i + 1, bonus.roll1);
-            result[i] += bonus.roll1 as u16;
+            if i < num_frames - 1 {
+                let bonus = match game.get(i + 1) {
+                    Some(bonus_frame) => bonus_frame,
+                    None => panic!("Illegal frame requested!"),
+                };
+                println!("Frame Bonus(spare)[{}] + {}", i + 1, bonus.roll1);
+                result[i] += bonus.roll1 as u16;
+            } else {
+                // if the tenth frame
+                // first check for additional rolls this frame
+                let bonus = match frame.roll2 {
+                    Some(roll) => roll,
+                    None => 0,
+                };
+                println!("Frame Bonus(spare)[{}] + {}", i + 1, bonus);
+                result[i] += bonus as u16;
+            }
         }
 
         if is_strike(&frame) {
-            if i < 9 {
+            if i < num_frames - 1 {
                 let bonus = match game.get(i + 1) {
                     Some(bonus_frame) => bonus_frame,
                     None => panic!("Illegal frame requested!"),
@@ -135,8 +149,8 @@ fn score_game(game: &Vec<Frame>) -> Result<u16, BowlingError> {
                     None => 0,
                 };
 
-                let fill_ball = match game.get(i + 1) {
-                    Some(bonus_frame) => bonus_frame.roll1,
+                let fill_ball = match frame.fill_ball {
+                    Some(roll) => roll,
                     None => panic!("Illegal frame requested!"),
                 };
                 println!(
@@ -166,49 +180,8 @@ mod test {
 
     #[test]
     fn all_gutterballs() {
-        let game = vec![
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-            (Frame {
-                roll1: 0,
-                roll2: None,
-            }),
-        ];
-        assert_eq!(score_game(&game), Ok(0))
+        let game = vec![Frame::default(); 10];
+        assert_eq!(score_game(10, &game), Ok(0))
     }
 
     #[test]
@@ -218,45 +191,37 @@ mod test {
             (Frame {
                 roll1: 10,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
         ];
-        assert_eq!(score_game(&game), Err(BowlingError::InvalidFrameScore))
+        assert_eq!(score_game(10, &game), Err(BowlingError::InvalidFrameScore))
     }
 
     #[test]
@@ -265,45 +230,55 @@ mod test {
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 1,
                 roll2: Some(1),
+                ..Default::default()
             }),
         ];
-        assert_eq!(score_game(&game), Ok(20))
+        assert_eq!(score_game(10, &game), Ok(20))
     }
 
     #[test]
@@ -312,45 +287,39 @@ mod test {
             (Frame {
                 roll1: 5,
                 roll2: Some(5),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 5,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
         ];
-        assert_eq!(score_game(&game), Ok(20))
+        assert_eq!(score_game(10, &game), Ok(20))
     }
 
     #[test]
@@ -359,45 +328,37 @@ mod test {
             (Frame {
                 roll1: 5,
                 roll2: Some(5),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: None,
+                ..Default::default()
             }),
         ];
-        assert_eq!(score_game(&game), Ok(10))
+        assert_eq!(score_game(10, &game), Ok(10))
     }
 
     #[test]
@@ -406,45 +367,41 @@ mod test {
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 5,
                 roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
         ];
-        assert_eq!(score_game(&game), Ok(25 + 15 + 5))
+        assert_eq!(score_game(10, &game), Ok(25 + 15 + 5))
     }
 
     #[test]
@@ -453,45 +410,37 @@ mod test {
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
-                roll1: 0,
-                roll2: Some(0),
+                ..Default::default()
             }),
         ];
-        assert_eq!(score_game(&game), Ok(10))
+        assert_eq!(score_game(10, &game), Ok(10))
     }
 
     #[test]
@@ -500,49 +449,87 @@ mod test {
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: Some(10),
+                fill_ball: Some(10),
+            }),
+        ];
+        assert_eq!(score_game(10, &game), Ok(300))
+    }
+
+    #[test]
+    fn perfect_game_5_frame() {
+        let game = vec![
+            (Frame {
+                roll1: 10,
+                roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
+            }),
+            (Frame {
+                roll1: 10,
+                roll2: None,
+                ..Default::default()
+            }),
+            (Frame {
+                roll1: 10,
+                roll2: None,
+                ..Default::default()
+            }),
+            (Frame {
+                roll1: 10,
+                roll2: Some(10),
+                fill_ball: Some(10),
             }),
         ];
-        assert_eq!(score_game(&game), Ok(300))
+        assert_eq!(score_game(5, &game), Ok(150))
     }
 
     #[test]
@@ -551,49 +538,55 @@ mod test {
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 7,
                 roll2: Some(3),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 7,
                 roll2: Some(2),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 9,
                 roll2: Some(1),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 2,
                 roll2: Some(3),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 6,
                 roll2: Some(4),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 7,
                 roll2: Some(3),
-            }),
-            (Frame {
-                roll1: 3,
-                roll2: Some(0),
+                fill_ball: Some(3),
             }),
         ];
-        assert_eq!(score_game(&game), Ok(168))
+        assert_eq!(score_game(10, &game), Ok(168))
     }
 
     #[test]
@@ -602,48 +595,54 @@ mod test {
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 7,
                 roll2: Some(3),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 9,
                 roll2: Some(0),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 0,
                 roll2: Some(8),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 8,
                 roll2: Some(2),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 0,
                 roll2: Some(6),
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: None,
+                ..Default::default()
             }),
             (Frame {
                 roll1: 10,
                 roll2: Some(8),
-            }),
-            (Frame {
-                roll1: 1,
-                roll2: Some(0),
+                fill_ball: Some(1),
             }),
         ];
-        assert_eq!(score_game(&game), Ok(167))
+        assert_eq!(score_game(10, &game), Ok(167))
     }
 }
