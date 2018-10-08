@@ -1,5 +1,17 @@
+#[macro_use]
+extern crate quick_error;
+
 fn main() {
     println!("Hello, world!");
+}
+
+quick_error! {
+    #[derive(Debug, PartialEq)]
+    pub enum BowlingError{
+        InvalidFrameScore{description("Impossible frame score detected")}
+        TooManyFrames{}
+        IncompleteGame{}
+    }
 }
 
 struct Frame {
@@ -7,12 +19,12 @@ struct Frame {
     roll2: Option<u8>,
 }
 
-fn validate_game(game: &Vec<(Frame)>) -> Result<(), ()> {
+fn validate_game(game: &Vec<(Frame)>) -> Result<(), BowlingError> {
     let game_len = game.len();
 
     if game_len < 10 {
         println!("Game incomplete!, expected 10 frames, found {}", game_len);
-        return Err(());
+        return Err(BowlingError::IncompleteGame);
     }
 
     if game_len > 11 {
@@ -20,14 +32,14 @@ fn validate_game(game: &Vec<(Frame)>) -> Result<(), ()> {
             "Game over-complete!, expected 10 frames, found {}",
             game_len
         );
-        return Err(());
+        return Err(BowlingError::TooManyFrames);
     }
     return Ok(());
 }
 
-fn validate_frame(frame: &Frame) -> u16 {
+fn validate_frame(frame: &Frame) -> Result<u16, BowlingError> {
     if is_spare(frame) || is_strike(frame) {
-        return 10;
+        return Ok(10);
     } else {
         let pins = match frame.roll2 {
             Some(roll) => (frame.roll1 + roll) as u16,
@@ -35,9 +47,9 @@ fn validate_frame(frame: &Frame) -> u16 {
         };
 
         if pins > 10 {
-            panic!("Invalid frame score!");
+            return Err(BowlingError::InvalidFrameScore);
         } else {
-            return pins;
+            return Ok(pins);
         }
     }
 }
@@ -56,14 +68,15 @@ fn is_spare(frame: &Frame) -> bool {
     };
 }
 
-fn score_game(game: &Vec<Frame>) -> u16 {
+fn score_game(game: &Vec<Frame>) -> Result<u16, BowlingError> {
     let mut result = vec![0; 11];
     let mut score = 0;
 
-    match validate_game(&game) {
-        Ok(()) => println!("seems legit"),
-        Err(()) => return 0,
-    }
+    validate_game(&game)?;
+    // match validate_game(&game) {
+    //     Ok(()) => println!("seems legit"),
+    //     Err(()) => return 0,
+    // }
 
     // Calculate open frames (naive score)
     println!("Calculating Naive Score:");
@@ -71,12 +84,8 @@ fn score_game(game: &Vec<Frame>) -> u16 {
         if i >= 10 {
             break;
         }
-        result[i] = match validate_frame(&frame) {
-            frame_score => {
-                println!("Frame[{}]\tScore[{}]", i + 1, frame_score);
-                frame_score
-            }
-        };
+        result[i] = validate_frame(&frame)?;
+        println!("Frame[{}]\tScore[{}]", i + 1, result[i]);
     }
     // Correct for spares and strikes
     println!("\nApplying Bonuses:");
@@ -146,12 +155,13 @@ fn score_game(game: &Vec<Frame>) -> u16 {
         score += frame_score;
         println!("[{}]  {}", i + 1, score);
     }
-    return score;
+    return Ok(score);
 }
 
 #[cfg(test)]
 mod test {
     use score_game;
+    use BowlingError;
     use Frame;
 
     #[test]
@@ -198,7 +208,7 @@ mod test {
                 roll2: None,
             }),
         ];
-        assert_eq!(score_game(&game), 0)
+        assert_eq!(score_game(&game), Ok(0))
     }
 
     #[test]
@@ -246,7 +256,7 @@ mod test {
                 roll2: None,
             }),
         ];
-        assert_eq!(score_game(&game), 0)
+        assert_eq!(score_game(&game), Err(BowlingError::InvalidFrameScore))
     }
 
     #[test]
@@ -293,7 +303,7 @@ mod test {
                 roll2: Some(1),
             }),
         ];
-        assert_eq!(score_game(&game), 20)
+        assert_eq!(score_game(&game), Ok(20))
     }
 
     #[test]
@@ -340,7 +350,7 @@ mod test {
                 roll2: None,
             }),
         ];
-        assert_eq!(score_game(&game), 20)
+        assert_eq!(score_game(&game), Ok(20))
     }
 
     #[test]
@@ -387,7 +397,7 @@ mod test {
                 roll2: None,
             }),
         ];
-        assert_eq!(score_game(&game), 10)
+        assert_eq!(score_game(&game), Ok(10))
     }
 
     #[test]
@@ -434,7 +444,7 @@ mod test {
                 roll2: Some(0),
             }),
         ];
-        assert_eq!(score_game(&game), 25 + 15 + 5)
+        assert_eq!(score_game(&game), Ok(25 + 15 + 5))
     }
 
     #[test]
@@ -481,7 +491,7 @@ mod test {
                 roll2: Some(0),
             }),
         ];
-        assert_eq!(score_game(&game), 10)
+        assert_eq!(score_game(&game), Ok(10))
     }
 
     #[test]
@@ -532,7 +542,7 @@ mod test {
                 roll2: None,
             }),
         ];
-        assert_eq!(score_game(&game), 300)
+        assert_eq!(score_game(&game), Ok(300))
     }
 
     #[test]
@@ -583,7 +593,7 @@ mod test {
                 roll2: Some(0),
             }),
         ];
-        assert_eq!(score_game(&game), 168)
+        assert_eq!(score_game(&game), Ok(168))
     }
 
     #[test]
@@ -634,6 +644,6 @@ mod test {
                 roll2: Some(0),
             }),
         ];
-        assert_eq!(score_game(&game), 167)
+        assert_eq!(score_game(&game), Ok(167))
     }
 }
