@@ -5,16 +5,19 @@ fn main() {
     println!("Hello, world!");
 }
 
+use std::result::Result as StdResult;
 quick_error! {
     #[derive(Debug, PartialEq)]
     pub enum BowlingError{
         InvalidFrameScore{description("Impossible frame score detected")}
-        TooManyFrames{}
-        IncompleteGame{}
+        TooManyFrames{description("Too many frames detected")}
+        TooFewFrames{description("Too few frames detected")}
+        MiscError{description("Misc bad thing")}
     }
 }
+type Result<T> = StdResult<T, BowlingError>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Frame {
     roll1: u8,
     roll2: Option<u8>,
@@ -31,39 +34,31 @@ impl Default for Frame {
     }
 }
 
-fn validate_game(num_frames: usize, game: &Vec<(Frame)>) -> Result<(), BowlingError> {
-    let game_len = game.len();
-
-    if game_len < num_frames {
-        println!("Game incomplete!, expected 10 frames, found {}", game_len);
-        return Err(BowlingError::IncompleteGame);
+fn validate_game(num_frames: usize, game: &Vec<(Frame)>) -> Result<()> {
+    match game.len() {
+        game_len if game_len == num_frames => Ok(()),
+        game_len if game_len > num_frames => Err(BowlingError::TooManyFrames),
+        _ => Err(BowlingError::TooFewFrames),
     }
-
-    if game_len > num_frames {
-        println!(
-            "Game over-complete!, expected 10 frames, found {}",
-            game_len
-        );
-        return Err(BowlingError::TooManyFrames);
-    }
-    return Ok(());
 }
 
-fn validate_frame(frame: &Frame) -> Result<u16, BowlingError> {
-    if is_spare(frame) || is_strike(frame) {
-        return Ok(10);
-    } else {
-        let pins = match frame.roll2 {
-            Some(roll) => (frame.roll1 + roll) as u16,
-            None => frame.roll1 as u16,
-        };
+fn validate_frame(is_last_frame: bool, frame: &Frame) -> Result<u16> {
+    let pins = match frame.roll2 {
+        Some(roll) => u16::from(frame.roll1 + roll),
+        None => u16::from(frame.roll1),
+    };
 
-        if pins > 10 {
-            return Err(BowlingError::InvalidFrameScore);
+    return if pins > 20 && is_last_frame {
+        Err(BowlingError::InvalidFrameScore)
+    } else if pins > 10 && !is_last_frame {
+        Err(BowlingError::InvalidFrameScore)
+    } else {
+        if is_strike(&frame) || is_spare(&frame) {
+            Ok(10)
         } else {
-            return Ok(pins);
+            Ok(pins)
         }
-    }
+    };
 }
 
 fn is_strike(frame: &Frame) -> bool {
@@ -80,8 +75,8 @@ fn is_spare(frame: &Frame) -> bool {
     };
 }
 
-fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError> {
-    let mut result = vec![0; 11];
+fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16> {
+    let mut result = vec![0; num_frames];
     let mut score = 0;
 
     validate_game(num_frames, &game)?;
@@ -89,7 +84,7 @@ fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError>
     // Calculate open frames (naive score)
     println!("Calculating Naive Score:");
     for (i, frame) in game.iter().enumerate() {
-        result[i] = validate_frame(&frame)?;
+        result[i] = validate_frame(i == (num_frames - 1), &frame)?;
         println!("Frame[{}]\tScore[{}]", i + 1, result[i]);
     }
 
@@ -103,7 +98,7 @@ fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError>
                     None => panic!("Illegal frame requested!"),
                 };
                 println!("Frame Bonus(spare)[{}] + {}", i + 1, bonus.roll1);
-                result[i] += bonus.roll1 as u16;
+                result[i] += u16::from(bonus.roll1);
             } else {
                 // if the tenth frame
                 // first check for additional rolls this frame
@@ -112,7 +107,7 @@ fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError>
                     None => 0,
                 };
                 println!("Frame Bonus(spare)[{}] + {}", i + 1, bonus);
-                result[i] += bonus as u16;
+                result[i] += u16::from(bonus);
             }
         }
 
@@ -126,7 +121,7 @@ fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError>
                 match bonus.roll2 {
                     Some(roll2) => {
                         println!("Frame Bonus(strike)[{}] + {}", i + 1, bonus.roll1 + roll2);
-                        result[i] += (bonus.roll1 + roll2) as u16;
+                        result[i] += u16::from(bonus.roll1 + roll2);
                     }
                     None => {
                         let extra_bonus = match game.get(i + 2) {
@@ -138,7 +133,7 @@ fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError>
                             i + 1,
                             bonus.roll1 + extra_bonus.roll1
                         );
-                        result[i] += (bonus.roll1 + extra_bonus.roll1) as u16;
+                        result[i] += u16::from(bonus.roll1 + extra_bonus.roll1);
                     }
                 }
             } else {
@@ -158,7 +153,7 @@ fn score_game(num_frames: usize, game: &Vec<Frame>) -> Result<u16, BowlingError>
                     i + 1,
                     extra_roll + fill_ball
                 );
-                result[i] += (extra_roll + fill_ball) as u16;
+                result[i] += u16::from(extra_roll + fill_ball);
             }
         }
     }
@@ -185,7 +180,18 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    fn too_many_frames() {
+        let game = vec![Frame::default(); 10];
+        assert_eq!(score_game(2, &game), Err(BowlingError::TooManyFrames))
+    }
+
+    #[test]
+    fn too_few_frames() {
+        let game = vec![Frame::default(); 2];
+        assert_eq!(score_game(10, &game), Err(BowlingError::TooFewFrames))
+    }
+
+    #[test]
     fn invalid_frame1() {
         let game = vec![
             (Frame {
@@ -196,32 +202,23 @@ mod test {
             (Frame {
                 ..Default::default()
             }),
+        ];
+        assert_eq!(score_game(2, &game), Err(BowlingError::InvalidFrameScore))
+    }
+
+    #[test]
+    fn invalid_frame2() {
+        let game = vec![
             (Frame {
-                ..Default::default()
-            }),
-            (Frame {
-                ..Default::default()
-            }),
-            (Frame {
-                ..Default::default()
-            }),
-            (Frame {
-                ..Default::default()
-            }),
-            (Frame {
-                ..Default::default()
-            }),
-            (Frame {
-                ..Default::default()
-            }),
-            (Frame {
+                roll1: 6,
+                roll2: Some(5),
                 ..Default::default()
             }),
             (Frame {
                 ..Default::default()
             }),
         ];
-        assert_eq!(score_game(10, &game), Err(BowlingError::InvalidFrameScore))
+        assert_eq!(score_game(2, &game), Err(BowlingError::InvalidFrameScore))
     }
 
     #[test]
